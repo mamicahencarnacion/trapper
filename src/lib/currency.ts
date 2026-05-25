@@ -7,15 +7,14 @@ export const CURRENCY_CONFIG = {
 export type CurrencyType = keyof typeof CURRENCY_CONFIG;
 
 /**
- * Converts a base USD value into the target currency and formats it with its respective symbol.
+ * Formats amount (in local currency) with its respective symbol.
  * @param amountInUSD The cost in USD
  * @param currency The active selected currency
  */
-export function formatCurrency(amountInUSD: number, currency: CurrencyType = 'USD'): string {
-  const config = CURRENCY_CONFIG[currency] || CURRENCY_CONFIG.USD;
-  const converted = amountInUSD * config.rate;
+export function formatCurrency(amountInLocalCurrency: number, currency: CurrencyType = 'PHP'): string {
+  const config = CURRENCY_CONFIG[currency] || CURRENCY_CONFIG.PHP;
   
-  return `${config.symbol}${converted.toLocaleString(undefined, {
+  return `${config.symbol}${amountInLocalCurrency.toLocaleString(undefined, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2
   })}`;
