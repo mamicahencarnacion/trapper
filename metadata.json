@@ -1,0 +1,6 @@
+{
+  "name": "Travel Map Tracker & Planner",
+  "description": "Progressive web app to track visited, lived, planned, and wanted countries on an interactive world map, featuring city lists, budget tracking, and detailed itineraries.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
