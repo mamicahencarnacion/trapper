@@ -2,6 +2,9 @@
 
 A beautiful, interactive, fully client-side and **100% offline-ready** world travel mapping and itinerary planning dashboard. Pin visited countries, track statistics, draft locations to visit, manage travel notes, and organize details without needing an internet connection.
 
+## 🌐 Live Application
+**Check out the deployed project:** 🚀 **[Launch PlanTravelLog](https://plantravellog.pages.dev)**
+
 ---
 
 ## 🎨 Core Features
