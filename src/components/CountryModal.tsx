@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Calendar, MapPin, Plus, Trash2, Link as LinkIcon, Image as ImageIcon, 
-  DollarSign, Clock, ListTodo, AlertCircle, Sparkles, Check, ChevronRight, ChevronsUpDown, Info, Edit, ArrowLeft, Heart, Award, Eye
+  DollarSign, Clock, ListTodo, AlertCircle, Sparkles, Check, ChevronLeft, ChevronRight, ChevronsUpDown, Info, Edit, ArrowLeft, Heart, Award, Eye
 } from 'lucide-react';
 import { CountryTrack, CountryCategory, DayItinerary, ItineraryEntry, TravelLog } from '../types';
 import { formatCurrency, CurrencyType } from '../lib/currency';
@@ -35,6 +35,376 @@ function getPrimaryCategory(logsList: TravelLog[]): CountryCategory {
   return sorted[0].category;
 }
 
+const parseLocalDate = (dateStr: string): Date => {
+  if (!dateStr) return new Date();
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    return new Date(y, m, d);
+  }
+  return new Date();
+};
+
+function CalendarPicker({
+  startDate,
+  endDate,
+  onRangeChange,
+  isStillLiving = false,
+  category
+}: {
+  startDate: string;
+  endDate: string;
+  onRangeChange: (start: string, end: string) => void;
+  isStillLiving?: boolean;
+  category: string;
+}) {
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const initialDate = startDate ? parseLocalDate(startDate) : new Date();
+    return isNaN(initialDate.getTime()) ? new Date() : initialDate;
+  });
+
+  const [hoveredDate, setHoveredDate] = useState<string | null>(null);
+
+  const lastSyncedDateRef = React.useRef(startDate);
+
+  // Sync currentMonth when startDate is edited manually/changed
+  useEffect(() => {
+    if (startDate && startDate !== lastSyncedDateRef.current) {
+      const d = parseLocalDate(startDate);
+      if (!isNaN(d.getTime())) {
+        setCurrentMonth(d);
+      }
+      lastSyncedDateRef.current = startDate;
+    } else if (!startDate) {
+      lastSyncedDateRef.current = '';
+    }
+  }, [startDate]);
+
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+
+  // Navigation handlers
+  const handlePrevMonth = () => {
+    setCurrentMonth(new Date(year, month - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(new Date(year, month + 1, 1));
+  };
+
+  // Helper formats
+  const formatDateString = (y: number, m: number, d: number) => {
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
+
+  const dayClick = (dayNum: number) => {
+    const dateStr = formatDateString(year, month, dayNum);
+    if (!startDate || (startDate && endDate)) {
+      onRangeChange(dateStr, '');
+    } else {
+      if (dateStr < startDate) {
+        onRangeChange(dateStr, '');
+      } else {
+        onRangeChange(startDate, dateStr);
+      }
+    }
+  };
+
+  // Days of previous month to pad the first week
+  const firstDayIndex = new Date(year, month, 1).getDay(); // Sunday is 0
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevMonthDaysCount = new Date(year, month, 0).getDate();
+
+  const calendarCells = useMemo(() => {
+    const cells = [];
+    
+    // Pad previous month days
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const prevYear = month === 0 ? year - 1 : year;
+      const prevMonth = month === 0 ? 11 : month - 1;
+      const prevDayNum = prevMonthDaysCount - i;
+      cells.push({
+        dayNum: prevDayNum,
+        dateStr: `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(prevDayNum).padStart(2, '0')}`,
+        isCurrentMonth: false
+      });
+    }
+
+    // Current month days
+    for (let i = 1; i <= daysInMonth; i++) {
+      cells.push({
+        dayNum: i,
+        dateStr: formatDateString(year, month, i),
+        isCurrentMonth: true
+      });
+    }
+
+    // Pad next month days to make grid multi-row uniform (usually 42 cells = 6 rows)
+    const totalCells = cells.length;
+    const nextMonthPadding = totalCells <= 35 ? 35 - totalCells : 42 - totalCells;
+    for (let i = 1; i <= nextMonthPadding; i++) {
+      const nextYear = month === 11 ? year + 1 : year;
+      const nextMonth = month === 11 ? 0 : month + 1;
+      cells.push({
+        dayNum: i,
+        dateStr: `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`,
+        isCurrentMonth: false
+      });
+    }
+
+    return cells;
+  }, [year, month, firstDayIndex, daysInMonth, prevMonthDaysCount]);
+
+  // Check if dates are in range
+  const isSelectedStart = (dateStr: string) => startDate === dateStr;
+  const isSelectedEnd = (dateStr: string) => endDate === dateStr;
+  
+  const isInRange = (dateStr: string) => {
+    if (!startDate || !endDate) return false;
+    return dateStr > startDate && dateStr < endDate;
+  };
+
+  const isInHoverRange = (dateStr: string) => {
+    if (!startDate || endDate || !hoveredDate) return false;
+    return dateStr > startDate && dateStr <= hoveredDate;
+  };
+
+  // Preset generator helpers
+  const handleApplyPreset = (daysDiff: number) => {
+    if (!startDate) return;
+    const baseDate = parseLocalDate(startDate);
+    const end = new Date(baseDate);
+    end.setDate(end.getDate() + daysDiff);
+    const endStr = formatDateString(end.getFullYear(), end.getMonth(), end.getDate());
+    onRangeChange(startDate, endStr);
+  };
+
+  const handleApplyTodayPreset = (daysDiff: number) => {
+    const today = new Date();
+    const todayStr = formatDateString(today.getFullYear(), today.getMonth(), today.getDate());
+    const end = new Date(today);
+    end.setDate(end.getDate() + daysDiff);
+    const endStr = formatDateString(end.getFullYear(), end.getMonth(), end.getDate());
+    onRangeChange(todayStr, endStr);
+  };
+
+  const handleMonthSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newMonth = parseInt(e.target.value, 10);
+    setCurrentMonth(new Date(year, newMonth, 1));
+  };
+
+  const handleYearSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newYear = parseInt(e.target.value, 10);
+    setCurrentMonth(new Date(newYear, month, 1));
+  };
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4.5 space-y-4">
+      {/* Calendar Header with Pickable Month & Year Dropdowns */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <Calendar className="w-4 h-4 text-slate-500 shrink-0" />
+          <div className="flex items-center gap-1">
+            {/* Month Dropdown */}
+            <select
+              value={month.toString()}
+              onChange={handleMonthSelect}
+              className="text-[11px] font-black text-slate-700 bg-slate-100 hover:bg-slate-200/80 border border-slate-250 hover:border-slate-300 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer transition-all"
+            >
+              {monthNames.map((name, mIdx) => (
+                <option key={mIdx} value={mIdx.toString()} className="font-sans normal-case text-xs text-slate-800 bg-white">
+                  {name}
+                </option>
+              ))}
+            </select>
+
+            {/* Year Dropdown */}
+            <select
+              value={year.toString()}
+              onChange={handleYearSelect}
+              className="text-[11px] font-black text-slate-700 bg-slate-100 hover:bg-slate-200/80 border border-slate-250 hover:border-slate-300 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer transition-all"
+            >
+              {Array.from({ length: 70 }, (_, i) => {
+                const yVal = new Date().getFullYear() + 5 - i;
+                return (
+                  <option key={yVal} value={yVal.toString()} className="font-sans text-xs text-slate-800 bg-white">
+                    {yVal}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="p-1.5 hover:bg-slate-200 border border-slate-250 rounded-lg text-slate-650 cursor-pointer transition-all flex items-center justify-center"
+            title="Previous Month"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            className="p-1.5 hover:bg-slate-200 border border-slate-250 rounded-lg text-slate-650 cursor-pointer transition-all flex items-center justify-center"
+            title="Next Month"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Days Grid */}
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day, dIdx) => (
+          <span key={dIdx} className="text-[10px] font-black uppercase text-slate-400 select-none py-1">
+            {day}
+          </span>
+        ))}
+
+        {calendarCells.map((cell, idx) => {
+          const isStart = isSelectedStart(cell.dateStr);
+          const isEnd = isSelectedEnd(cell.dateStr);
+          const inRange = isInRange(cell.dateStr);
+          const hoverRange = isInHoverRange(cell.dateStr);
+
+          let cellClass = "relative py-2 text-[11px] font-bold transition-all rounded-lg cursor-pointer max-w-full flex items-center justify-center ";
+          if (isStart) {
+            cellClass += "bg-indigo-600 text-white shadow-xs font-black rounded-r-none";
+          } else if (isEnd) {
+            cellClass += "bg-indigo-600 text-white shadow-xs font-black rounded-l-none";
+          } else if (inRange) {
+            cellClass += "bg-indigo-50 text-indigo-900 rounded-none hover:bg-indigo-100";
+          } else if (hoverRange) {
+            cellClass += "bg-indigo-50/60 text-indigo-950 rounded-none border-y border-dashed border-indigo-200";
+          } else if (!cell.isCurrentMonth) {
+            cellClass += "text-slate-300 hover:bg-slate-200/50 hover:text-slate-500";
+          } else {
+            cellClass += "text-slate-700 hover:bg-slate-200 hover:text-slate-900";
+          }
+
+          // Highlight Today
+          const today = new Date();
+          const isToday = formatDateString(today.getFullYear(), today.getMonth(), today.getDate()) === cell.dateStr;
+          if (isToday && !isStart && !isEnd) {
+            cellClass += " border border-indigo-400 font-extrabold";
+          }
+
+          return (
+            <button
+              key={`${cell.dateStr}-${idx}`}
+              type="button"
+              onClick={() => dayClick(cell.dayNum)}
+              onMouseEnter={() => setHoveredDate(cell.dateStr)}
+              onMouseLeave={() => setHoveredDate(null)}
+              className={cellClass}
+            >
+              <span>{cell.dayNum}</span>
+              {isToday && (
+                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-indigo-505" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Help Tip */}
+      <p className="text-[10px] text-slate-450 italic leading-snug">
+        {!startDate ? (
+          <span>Select first date to set your <b>start date</b>.</span>
+        ) : !endDate && !isStillLiving ? (
+          <span>Select second date to lock <b>end date</b>, or use presets below.</span>
+        ) : (
+          <span>Click any date to reset selection range.</span>
+        )}
+      </p>
+
+      {/* Presets Grid */}
+      <div className="border-t border-slate-200/60 pt-3 space-y-2">
+        <label className="text-[9px] uppercase font-black tracking-widest text-slate-400 block">
+          ⚡ 1-Click Stay Presets
+        </label>
+
+        {startDate ? (
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-bold text-slate-500 block">
+              Set stay length starting from {startDate}:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: '3 Days', val: 2 },
+                { label: '5 Days', val: 4 },
+                { label: '1 Week', val: 6 },
+                { label: '10 Days', val: 9 },
+                { label: '2 Weeks', val: 13 },
+                { label: '3 Weeks', val: 20 },
+                { label: '1 Month', val: 30 }
+              ].map((pSet) => (
+                <button
+                  key={pSet.label}
+                  type="button"
+                  onClick={() => handleApplyPreset(pSet.val)}
+                  className="px-2.5 py-1 text-[10px] font-bold bg-white text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border border-indigo-200 rounded-lg shadow-3xs cursor-pointer transition-all active:scale-95"
+                >
+                  +{pSet.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-bold text-slate-500 block">
+              Set stay range starting from Today:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: '3 Days Stay', val: 2 },
+                { label: '5 Days Stay', val: 4 },
+                { label: '1 Week Stay', val: 6 },
+                { label: '10 Days Stay', val: 9 },
+                { label: '2 Weeks Stay', val: 13 },
+                { label: '1 Month Stay', val: 30 }
+              ].map((pSet) => (
+                <button
+                  key={pSet.label}
+                  type="button"
+                  onClick={() => handleApplyTodayPreset(pSet.val)}
+                  className="px-2.5 py-1 text-[10px] font-bold bg-white text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border border-indigo-200 rounded-lg shadow-3xs cursor-pointer transition-all active:scale-95"
+                >
+                  {pSet.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(startDate || endDate) && (
+          <div className="flex items-center justify-between gap-4 bg-slate-100 p-2.5 text-[11px] rounded-xl border border-slate-150">
+            <div className="font-bold text-slate-700">
+              Range: <span className="text-indigo-700 font-mono">{startDate || '...'}</span> &rarr; <span className="text-indigo-700 font-mono">{endDate || (isStillLiving ? 'Present (Ongoing)' : '...')}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onRangeChange('', '')}
+              className="px-2 py-0.5 text-[9.5px] font-black uppercase text-red-650 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md transition-all cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CountryModal({
   countryCode,
   countryName,
@@ -42,11 +412,14 @@ export default function CountryModal({
   onSave,
   onDelete,
   onClose,
-  currency = 'USD'
+  currency = 'PHP'
 }: CountryModalProps) {
   
   // List of all logs in local state
   const [logs, setLogs] = useState<TravelLog[]>([]);
+  const [confirmDeleteLogId, setConfirmDeleteLogId] = useState<string | null>(null);
+  const [confirmStopTracking, setConfirmStopTracking] = useState<boolean>(false);
+  const [confirmStripDay, setConfirmStripDay] = useState<boolean>(false);
   
   // Active log editing tracker.
   // null = showing the Logs List View (Hub mode)
@@ -66,6 +439,7 @@ export default function CountryModal({
   const [days, setDays] = useState<DayItinerary[]>([]);
   const [activeDayIdx, setActiveDayIdx] = useState(0);
   const [generalNotes, setGeneralNotes] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Itinerary detail Form states
   const [showItemForm, setShowItemForm] = useState(false);
@@ -150,6 +524,7 @@ export default function CountryModal({
 
   // Transition helper to load log fields into edit controllers
   const loadLogIntoForm = (log: TravelLog) => {
+    setValidationError(null);
     setCategory(log.category);
     setStartDate(log.startDate || '');
     setEndDate(log.endDate || '');
@@ -166,6 +541,7 @@ export default function CountryModal({
   };
 
   const openNewLogForm = () => {
+    setValidationError(null);
     setCategory('visited');
     setStartDate('');
     setEndDate('');
@@ -193,9 +569,15 @@ export default function CountryModal({
   };
 
   const handleAddCity = () => {
-    const trimmed = cityInput.trim();
-    if (trimmed && !cities.includes(trimmed)) {
-      setCities([...cities, trimmed]);
+    const parts = cityInput.split(',').map(s => s.trim()).filter(Boolean);
+    if (parts.length > 0) {
+      const newCities = [...cities];
+      parts.forEach(part => {
+        if (!newCities.includes(part)) {
+          newCities.push(part);
+        }
+      });
+      setCities(newCities);
     }
     setCityInput('');
   };
@@ -298,29 +680,42 @@ export default function CountryModal({
 
   // Delete specific log and instantly sync to App state
   const handleDeleteLogItem = (logId: string) => {
-    if (window.confirm("Are you sure you want to delete this trip log?")) {
-      const nextLogs = logs.filter(l => l.id !== logId);
-      setLogs(nextLogs);
-      
-      if (nextLogs.length === 0) {
-        // If no logs left, delete/unpin the country completely from dashboard
-        onDelete(countryCode);
-        onClose();
-      } else {
-        const prim = getPrimaryCategory(nextLogs);
-        onSave({
-          id: countryCode,
-          countryCode,
-          countryName,
-          category: prim,
-          logs: nextLogs
-        });
-      }
+    const nextLogs = logs.filter(l => l.id !== logId);
+    setLogs(nextLogs);
+    
+    if (nextLogs.length === 0) {
+      // If no logs left, delete/unpin the country completely from dashboard
+      onDelete(countryCode);
+      onClose();
+    } else {
+      const prim = getPrimaryCategory(nextLogs);
+      onSave({
+        id: countryCode,
+        countryCode,
+        countryName,
+        category: prim,
+        logs: nextLogs
+      });
     }
   };
 
   // Save/Commit active Log Form changes back to the list
   const handleCommitLogForm = () => {
+    // Validate required dates
+    if (category === 'visited' || category === 'lived') {
+      if (!startDate) {
+        setValidationError("Please choose a Start Date before saving. Click any day on the calendar above or type it manually in the fields below.");
+        return;
+      }
+    } else if (category === 'planned') {
+      if (!plannedStartDate) {
+        setValidationError("Please select a Planned Start Date before saving. Click any day on the calendar above or type it manually in the fields below.");
+        return;
+      }
+    }
+
+    setValidationError(null); // Clear active validation errors
+
     const updatedLog: TravelLog = {
       id: editingLogId === 'new' ? `log-${Date.now()}` : editingLogId!,
       category,
@@ -499,13 +894,37 @@ export default function CountryModal({
                               >
                                 <Edit className="w-3 h-3" />
                               </button>
-                              <button
-                                onClick={() => handleDeleteLogItem(log.id)}
-                                className="p-1.5 hover:bg-red-50 hover:border-red-200 text-slate-350 hover:text-red-600 border border-slate-200 rounded-lg transition-all cursor-pointer"
-                                title="Delete Stay Log"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                              {confirmDeleteLogId === log.id ? (
+                                <div className="flex items-center gap-1 bg-red-50 border border-red-150 rounded-lg p-0.5 px-1.5 shrink-0">
+                                  <span className="text-[9px] font-black text-red-800">Clear?</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleDeleteLogItem(log.id);
+                                      setConfirmDeleteLogId(null);
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700 text-white font-extrabold text-[8px] px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                                  >
+                                    Yes
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteLogId(null)}
+                                    className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-500 font-bold text-[8px] px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteLogId(log.id)}
+                                  className="p-1.5 hover:bg-red-50 hover:border-red-200 text-slate-350 hover:text-red-600 border border-slate-200 rounded-lg transition-all cursor-pointer"
+                                  title="Delete Stay Log"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -547,24 +966,6 @@ export default function CountryModal({
                   </div>
                 )}
                 
-                {/* Critical unpin/delete country completely */}
-                <div className="pt-8 border-t border-slate-100 flex items-center justify-between gap-4">
-                  <p className="text-[10px] text-slate-400 font-bold max-w-xs uppercase tracking-wide leading-normal">
-                    This unpins {countryName} from your travel coordinates and clears all associated travel logs from storage.
-                  </p>
-                  <button
-                    onClick={() => {
-                      if (window.confirm(`Are you absolutely sure you want to stop tracking ${countryName} entirely? This will irreversibly erase all registered stay logs and budget timelines.`)) {
-                        onDelete(countryCode);
-                        onClose();
-                      }
-                    }}
-                    className="inline-flex items-center gap-1.5 text-xs text-red-650 font-bold border border-red-250 py-2.5 px-4 bg-red-50 hover:bg-red-100/70 hover:border-red-350 rounded-xl cursor-pointer transition-all shrink-0 shadow-xs"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Unpin Country Completely
-                  </button>
-                </div>
               </motion.div>
             )}
 
@@ -601,6 +1002,14 @@ export default function CountryModal({
                   </h3>
                 </div>
 
+                {/* Validation Error Banner */}
+                {validationError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 flex items-start gap-2.5 text-red-800 text-[11px] font-medium leading-relaxed shadow-3xs">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <div>{validationError}</div>
+                  </div>
+                )}
+
                 {/* Milestone category selector */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Milestone Status</label>
@@ -630,53 +1039,82 @@ export default function CountryModal({
 
                 {/* VISITED & LIVED Timeline forms */}
                 {(category === 'visited' || category === 'lived') && (
-                  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-150">
-                    <div className="space-y-1">
-                      <label className="text-[10.5px] font-bold text-slate-600 block">Start Date</label>
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 focus:outline-none bg-white font-sans"
-                      />
+                  <div className="space-y-4 bg-white p-4.5 rounded-2xl border border-slate-150 shadow-2xs">
+                    <div className="flex items-center gap-1.5 justify-between">
+                      <label className="text-[10px] uppercase font-black tracking-widest text-slate-455 block">Timeline Date Range</label>
+                      {category === 'lived' && (
+                        <label className="flex items-center gap-1.5 text-[10.5px] text-emerald-800 font-extrabold select-none cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isStillLiving}
+                            onChange={(e) => setIsStillLiving(e.target.checked)}
+                            className="accent-emerald-700 w-3.5 h-3.5 cursor-pointer rounded"
+                          />
+                          Currently Live Here
+                        </label>
+                      )}
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[10.5px] font-bold text-slate-600 block">End Date</label>
-                        {category === 'lived' && (
-                          <label className="flex items-center gap-1 text-[9px] text-emerald-800 font-bold select-none cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={isStillLiving}
-                              onChange={(e) => setIsStillLiving(e.target.checked)}
-                              className="accent-emerald-700 w-3 h-3 cursor-pointer"
-                            />
-                            Currently Lived Here
-                          </label>
-                        )}
+                    
+                    {/* Embedded Interactive Calendar Date-Range Picker & 1-Click Presets */}
+                    <CalendarPicker 
+                      startDate={startDate}
+                      endDate={isStillLiving ? '' : endDate}
+                      onRangeChange={(start, end) => {
+                        setStartDate(start);
+                        if (!isStillLiving) {
+                          setEndDate(end);
+                        }
+                      }}
+                      isStillLiving={isStillLiving}
+                      category={category}
+                    />
+
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                      <div className="space-y-1">
+                        <label className="text-[10.5px] font-bold text-slate-600 block">Start Date (Manual)</label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 focus:outline-none bg-white font-sans"
+                        />
                       </div>
-                      <input
-                        type="date"
-                        value={endDate}
-                        disabled={category === 'lived' && isStillLiving}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 focus:outline-none bg-white font-sans disabled:bg-slate-100 disabled:text-slate-400"
-                      />
+                      <div className="space-y-1">
+                        <label className="text-[10.5px] font-bold text-slate-600 block">End Date (Manual)</label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          disabled={category === 'lived' && isStillLiving}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 focus:outline-none bg-white font-sans disabled:bg-slate-100 disabled:text-slate-400"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {/* PLANNED Trip Timeline Form */}
                 {category === 'planned' && (
-                  <div className="space-y-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/80">
-                    <div className="flex items-center gap-2 text-[10px] text-indigo-700 font-bold bg-indigo-50 border border-indigo-150/60 p-2.5 rounded-xl mb-1 leading-normal">
-                      <Info className="w-4 h-4 shrink-0 text-indigo-500" />
+                  <div className="space-y-4 bg-indigo-50/30 p-4.5 rounded-2xl border border-indigo-100 shadow-2xs">
+                    <div className="flex items-center gap-2 text-[10.5px] text-indigo-700 font-bold bg-indigo-50 border border-indigo-150 p-2.5 rounded-xl mb-1 leading-normal">
+                      <Info className="w-4 h-4 shrink-0 text-indigo-505" />
                       <span>Specifying planned travels automatically generates Day timeline buckets for scheduling detailed stops.</span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    {/* Embedded Interactive Calendar Date-Range Picker & 1-Click Presets */}
+                    <CalendarPicker 
+                      startDate={plannedStartDate}
+                      endDate={plannedEndDate}
+                      onRangeChange={(start, end) => {
+                        setPlannedStartDate(start);
+                        setPlannedEndDate(end);
+                      }}
+                      category={category}
+                    />
+
+                    <div className="grid grid-cols-2 gap-3 pt-2">
                       <div className="space-y-1">
-                        <label className="text-[10.5px] font-bold text-slate-600 block">Trip Start Date</label>
+                        <label className="text-[10.5px] font-bold text-slate-600 block">Trip Start Date (Manual)</label>
                         <input
                           type="date"
                           value={plannedStartDate}
@@ -685,7 +1123,7 @@ export default function CountryModal({
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10.5px] font-bold text-slate-600 block">Trip End Date (Optional)</label>
+                        <label className="text-[10.5px] font-bold text-slate-600 block">Trip End Date (Manual)</label>
                         <input
                           type="date"
                           value={plannedEndDate}
@@ -805,19 +1243,46 @@ export default function CountryModal({
                       </button>
                       
                       {days.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm("Do you want to strip out the last planning Day? This deletes any stop entries contained inside.")) {
-                              setDays(days.slice(0, -1));
-                              setActiveDayIdx(0);
-                            }
-                          }}
-                          className="shrink-0 p-2.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl cursor-pointer"
-                          title="Delete Last Planning Day"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-650" />
-                        </button>
+                        confirmStripDay ? (
+                          <div className="flex items-center gap-1 bg-red-50 border border-red-150 rounded-xl p-1 px-2 shrink-0 animate-fadeIn">
+                            <span className="text-[9px] font-black text-red-800">Strip?</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDays(days.slice(0, -1));
+                                setActiveDayIdx(0);
+                                setConfirmStripDay(false);
+                              }}
+                              className="bg-red-600 hover:bg-red-700 text-white font-extrabold text-[8px] px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmStripDay(false)}
+                              className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-550 font-bold text-[8px] px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const lastDay = days[days.length - 1];
+                              if (lastDay && lastDay.entries && lastDay.entries.length > 0) {
+                                setConfirmStripDay(true);
+                              } else {
+                                setDays(days.slice(0, -1));
+                                setActiveDayIdx(0);
+                              }
+                            }}
+                            className="shrink-0 p-2.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl cursor-pointer"
+                            title="Delete Last Planning Day"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-650" />
+                          </button>
+                        )
                       )}
                     </div>
 
@@ -1104,36 +1569,89 @@ export default function CountryModal({
                   </div>
                 )}
 
-                {/* Sub edit actions */}
-                <div className="pt-6 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (editingLogId === 'new' && logs.length === 0) {
-                        onClose();
-                      } else {
-                        setEditingLogId(null);
-                      }
-                    }}
-                    className="px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer text-slate-650"
-                  >
-                    Cancel / Back
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleCommitLogForm}
-                    className="px-5 py-2.5 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-xs hover:shadow transition-all border-t border-indigo-500 cursor-pointer"
-                  >
-                    Done & Save Stay Log
-                  </button>
-                </div>
               </motion.div>
             )}
 
           </AnimatePresence>
 
         </div>
+
+        {/* Static Premium Footer (Always visible at the bottom) */}
+        <footer className="px-6 py-4 border-t border-slate-150 bg-slate-50/95 backdrop-blur-xs flex items-center justify-between shrink-0 font-sans">
+          {editingLogId === null ? (
+            // Footer actions for View 1 List Hub (Modal Open)
+            <>
+              <p className="text-[10px] text-slate-450 font-bold max-w-[240px] uppercase tracking-wide leading-normal">
+                All records sync automatically to your browser's private local storage.
+              </p>
+              <div className="flex items-center gap-2">
+                {confirmStopTracking ? (
+                  <div className="flex items-center gap-1.5 bg-red-50 border border-red-200 rounded-xl p-1 px-2">
+                    <span className="text-[9px] font-black text-red-800 uppercase tracking-wide">Unpin track?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onDelete(countryCode);
+                        onClose();
+                      }}
+                      className="bg-red-600 hover:bg-red-700 text-white font-extrabold text-[9px] px-2.5 py-1 rounded-lg cursor-pointer transition-colors shadow-3xs"
+                    >
+                      Unpin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmStopTracking(false)}
+                      className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-[9px] px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmStopTracking(true)}
+                    className="inline-flex items-center gap-1.5 text-xs text-red-650 font-bold border border-red-200 py-2.5 px-4 bg-red-50 hover:bg-red-100/70 hover:border-red-300 rounded-xl cursor-pointer transition-all shadow-3xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                    Unpin Country
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-5 py-2.5 bg-slate-900 border border-slate-950 text-white hover:bg-slate-800 rounded-xl text-xs font-black shadow-xs hover:shadow transition-all cursor-pointer leading-none flex items-center justify-center h-9"
+                >
+                  Done & Exit
+                </button>
+              </div>
+            </>
+          ) : (
+            // Footer actions for View 2 Log Editor Form
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingLogId === 'new' && logs.length === 0) {
+                    onClose();
+                  } else {
+                    setEditingLogId(null);
+                  }
+                }}
+                className="px-4 py-2.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer text-slate-655"
+              >
+                Cancel / Back
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCommitLogForm}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-xs hover:shadow transition-all border-t border-indigo-400 cursor-pointer"
+              >
+                Done & Save Stay Log
+              </button>
+            </>
+          )}
+        </footer>
 
       </div>
       

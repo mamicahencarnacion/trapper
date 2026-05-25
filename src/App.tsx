@@ -1,117 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, Palmtree, MapPin, Share2, Sparkles, Filter, ChevronRight, HelpCircle, AlertTriangle } from 'lucide-react';
+import { Compass, Palmtree, MapPin, Share2, Sparkles, Filter, ChevronRight, HelpCircle, AlertTriangle, Calendar } from 'lucide-react';
 import WorldMap from './components/WorldMap';
 import StatsSection from './components/StatsSection';
 import Dashboard from './components/Dashboard';
 import CountryModal from './components/CountryModal';
+import TravelTimeline from './components/TravelTimeline';
 import { CountryTrack, CountryCategory } from './types';
 
 // Preloaded mock data on first load to showcase the PWA's rich layouts
-const DEFAULT_PRESETS: CountryTrack[] = [
-  {
-    id: 'FRA',
-    countryCode: 'FRA',
-    countryName: 'France',
-    category: 'planned',
-    plannedStartDate: '2026-08-10',
-    plannedEndDate: '2026-08-12',
-    cities: ['Paris', 'Nice'],
-    itinerary: [
-      {
-        dayNumber: 1,
-        date: '2026-08-10',
-        entries: [
-          {
-            id: 'fr-p-1',
-            category: 'flight',
-            title: 'Fly into Charles de Gaulle Airport',
-            time: '08:45',
-            notes: 'Terminal 2E, check luggage tags.',
-            price: 680,
-            links: ['https://www.parisaeroport.fr']
-          },
-          {
-            id: 'fr-p-2',
-            category: 'accommodation',
-            title: 'Check-in at Hotel Lutetia',
-            time: '14:00',
-            notes: 'Beautiful classic hotel in Saint-Germain-des-Prés.',
-            price: 320,
-            links: ['https://www.hotellutetia.com']
-          },
-          {
-            id: 'fr-p-3',
-            category: 'food',
-            title: 'Gourmet Dinner at Le Procope',
-            time: '20:00',
-            notes: 'Pariss oldest cafe. Try the coq au vin.',
-            price: 90
-          }
-        ]
-      },
-      {
-        dayNumber: 2,
-        date: '2026-08-11',
-        entries: [
-          {
-            id: 'fr-p-4',
-            category: 'attraction',
-            title: 'Louvre Museum Tour & Mona Lisa',
-            time: '10:00',
-            notes: 'Pre-booked timed tickets. Entrance via Richelieu.',
-            price: 22,
-            links: ['https://www.louvre.fr']
-          },
-          {
-            id: 'fr-p-5',
-            category: 'activity',
-            title: 'Seine River Cruise at Sunset',
-            time: '18:30',
-            notes: 'Boat leaves from under the Eiffel Tower.',
-            price: 15
-          }
-        ]
-      },
-      {
-        dayNumber: 3,
-        date: '2026-08-12',
-        entries: [
-          {
-            id: 'fr-p-6',
-            category: 'tour',
-            title: 'Eiffel Tower Summit Lift Access',
-            time: '09:00',
-            notes: 'Get there 30 mins early for security.',
-            price: 29
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'JPN',
-    countryCode: 'JPN',
-    countryName: 'Japan',
-    category: 'visited',
-    startDate: '2024-04-01',
-    endDate: '2024-04-12',
-    cities: ['Tokyo', 'Kyoto', 'Osaka', 'Nara'],
-  },
-  {
-    id: 'ITA',
-    countryCode: 'ITA',
-    countryName: 'Italy',
-    category: 'favorite',
-    cities: ['Rome', 'Florence', 'Venice', 'Amalfi'],
-  },
-  {
-    id: 'ISL',
-    countryCode: 'ISL',
-    countryName: 'Iceland',
-    category: 'want to visit',
-    cities: ['Reykjavik'],
-  }
-];
+const DEFAULT_PRESETS: CountryTrack[] = [];
 
 // Migrate layout properties for multiple logs support
 const migrateCountryTracks = (raw: CountryTrack[]): CountryTrack[] => {
@@ -142,13 +39,17 @@ export default function App() {
   const [tracks, setTracks] = useState<CountryTrack[]>([]);
   const [selectedCountry, setSelectedCountry] = useState<{ code: string; name: string } | null>(null);
   const [showDataWarning, setShowDataWarning] = useState<boolean>(false);
-  const [currency, setCurrency] = useState<'USD' | 'GBP' | 'PHP'>('USD');
+  const [currency, setCurrency] = useState<'USD' | 'GBP' | 'PHP'>('PHP');
+  const [activeTab, setActiveTab] = useState<'map' | 'timeline'>('map');
+  const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
 
   // Initialize tracks and currency from localStorage or default presets
   useEffect(() => {
     const cachedCurrency = localStorage.getItem('world_travel_currency');
     if (cachedCurrency === 'USD' || cachedCurrency === 'GBP' || cachedCurrency === 'PHP') {
       setCurrency(cachedCurrency);
+    } else {
+      setCurrency('PHP');
     }
 
     const cached = localStorage.getItem('world_travel_tracks');
@@ -208,6 +109,23 @@ export default function App() {
     saveTracks(next);
   };
 
+  // Delete a specific stay/log inside a country track
+  const handleDeleteLog = (countryCode: string, logId: string) => {
+    const track = tracks.find(t => t.countryCode === countryCode);
+    if (!track) return;
+    const nextLogs = (track.logs || []).filter(l => l.id !== logId);
+    if (nextLogs.length === 0) {
+      handleDeleteCountryTrack(countryCode);
+    } else {
+      const updatedTrack: CountryTrack = {
+        ...track,
+        logs: nextLogs,
+        category: nextLogs[0].category
+      };
+      handleSaveCountryTrack(updatedTrack);
+    }
+  };
+
   // Open modal/drawer for editing
   const handleOpenEditCountry = (code: string) => {
     const found = tracks.find(t => t.countryCode === code);
@@ -265,18 +183,41 @@ export default function App() {
               </select>
             </div>
 
-            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-            <button
-              onClick={() => {
-                // Clear state helper to reset presets
-                if (window.confirm('Would you like to reset maps back to default showcase data? This will overwrite your changes.')) {
-                  saveTracks(migrateCountryTracks(DEFAULT_PRESETS));
-                }
-              }}
-              className="text-[10px] uppercase font-bold tracking-wider px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 transition-all text-slate-700 cursor-pointer"
-            >
-              Reset Showcase
-            </button>
+            {tracks.length > 0 && (
+              <>
+                <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+                {showClearConfirm ? (
+                  <div className="flex items-center gap-2 bg-red-50 border border-red-150 rounded-xl p-1 px-2.5">
+                    <span className="text-[9px] font-bold text-red-750 uppercase tracking-widest pl-1">Confirm Reset All?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveTracks([]);
+                        setShowClearConfirm(false);
+                      }}
+                      className="bg-red-605 hover:bg-red-700 text-white font-extrabold text-[9px] px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowClearConfirm(false)}
+                      className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-[9px] px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowClearConfirm(true)}
+                    className="text-[10px] uppercase font-bold tracking-wider px-3 py-2 bg-red-50 hover:bg-red-100 text-red-750 border border-red-150 rounded-xl transition-all cursor-pointer"
+                  >
+                    Clear All Pins
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -315,29 +256,74 @@ export default function App() {
           </div>
         )}
 
-        {/* Row 1: Interactive World Map */}
-        <section aria-labelledby="world-map-title">
-          <WorldMap 
-            tracks={tracks}
-            selectedCountryCode={selectedCountry?.code || null}
-            onSelectCountry={(code, name) => setSelectedCountry({ code, name })}
-          />
-        </section>
+        {/* Tab Switcher Navigation */}
+        <div 
+          id="travel-app-tabs" 
+          className="flex items-center justify-center p-1 bg-slate-100 rounded-2xl max-w-sm mx-auto shadow-3xs"
+        >
+          <button
+            type="button"
+            onClick={() => setActiveTab('map')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'map'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+            }`}
+          >
+            <Compass className={`w-3.5 h-3.5 shrink-0 ${activeTab === 'map' ? 'text-indigo-600 animate-spin-slow' : 'text-slate-400'}`} />
+            Interactive Map
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('timeline')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'timeline'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+            }`}
+          >
+            <Calendar className={`w-3.5 h-3.5 shrink-0 ${activeTab === 'timeline' ? 'text-indigo-650' : 'text-slate-400'}`} />
+            Travel Timeline
+          </button>
+        </div>
 
-        {/* Row 2: Comprehensive visual numeric stats counters */}
-        <section id="travel-footprint-statistics">
-          <StatsSection tracks={tracks} currency={currency} />
-        </section>
+        {activeTab === 'map' ? (
+          <>
+            {/* Row 1: Interactive World Map */}
+            <section aria-labelledby="world-map-title">
+              <WorldMap 
+                tracks={tracks}
+                selectedCountryCode={selectedCountry?.code || null}
+                onSelectCountry={(code, name) => setSelectedCountry({ code, name })}
+              />
+            </section>
 
-        {/* Row 3: Dashboard feeds and lists of pinned countries */}
-        <section id="travel-details-feeds">
-          <Dashboard 
-            tracks={tracks}
-            onEditCountry={handleOpenEditCountry}
-            onDeleteCountry={handleDeleteCountryTrack}
-            currency={currency}
-          />
-        </section>
+            {/* Row 2: Comprehensive visual numeric stats counters */}
+            <section id="travel-footprint-statistics">
+              <StatsSection tracks={tracks} currency={currency} />
+            </section>
+
+            {/* Row 3: Dashboard feeds and lists of pinned countries */}
+            <section id="travel-details-feeds">
+              <Dashboard 
+                tracks={tracks}
+                onEditCountry={handleOpenEditCountry}
+                onDeleteCountry={handleDeleteCountryTrack}
+                currency={currency}
+              />
+            </section>
+          </>
+        ) : (
+          <section id="travel-timeline-section" className="space-y-6">
+            <TravelTimeline 
+              tracks={tracks}
+              onEditCountry={handleOpenEditCountry}
+              onDeleteCountry={handleDeleteCountryTrack}
+              onDeleteLog={handleDeleteLog}
+              currency={currency}
+            />
+          </section>
+        )}
 
       </main>
 

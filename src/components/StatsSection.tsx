@@ -8,7 +8,7 @@ interface StatsSectionProps {
   currency?: CurrencyType;
 }
 
-export default function StatsSection({ tracks, currency = 'USD' }: StatsSectionProps) {
+export default function StatsSection({ tracks, currency = 'PHP' }: StatsSectionProps) {
   const stats = useMemo<TravelStats>(() => {
     let visited = 0;
     let lived = 0;

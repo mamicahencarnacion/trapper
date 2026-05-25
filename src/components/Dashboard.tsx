@@ -13,7 +13,7 @@ interface DashboardProps {
   currency?: CurrencyType;
 }
 
-export default function Dashboard({ tracks, onEditCountry, onDeleteCountry, currency = 'USD' }: DashboardProps) {
+export default function Dashboard({ tracks, onEditCountry, onDeleteCountry, currency = 'PHP' }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<CountryCategory | 'all'>('all');
   const [expandedCountryId, setExpandedCountryId] = useState<string | null>(null);
