@@ -19,6 +19,54 @@ interface MapCountry {
   feature: any; // geojson feature for drawing
 }
 
+const MICROSTATES = [
+  { code3: 'SGP', numeric: '702', name: 'Singapore', lat: 1.3521, lng: 103.8198, r: 0.35 },
+  { code3: 'MCO', numeric: '492', name: 'Monaco', lat: 43.7384, lng: 7.4246, r: 0.15 },
+  { code3: 'VAT', numeric: '336', name: 'Vatican City', lat: 41.9029, lng: 12.4534, r: 0.15 },
+  { code3: 'SMR', numeric: '674', name: 'San Marino', lat: 43.9424, lng: 12.4578, r: 0.15 },
+  { code3: 'LIE', numeric: '438', name: 'Liechtenstein', lat: 47.1410, lng: 9.5554, r: 0.15 },
+  { code3: 'AND', numeric: '020', name: 'Andorra', lat: 42.5063, lng: 1.5218, r: 0.15 },
+  { code3: 'MLT', numeric: '470', name: 'Malta', lat: 35.9375, lng: 14.3754, r: 0.25 },
+  { code3: 'LUX', numeric: '442', name: 'Luxembourg', lat: 49.8153, lng: 6.1296, r: 0.22 },
+  { code3: 'MDV', numeric: '462', name: 'Maldives', lat: 3.2028, lng: 73.2207, r: 0.35 },
+  { code3: 'BHR', numeric: '048', name: 'Bahrain', lat: 26.0667, lng: 50.5500, r: 0.35 },
+  { code3: 'SYC', numeric: '690', name: 'Seychelles', lat: -4.6796, lng: 55.4920, r: 0.35 },
+  { code3: 'MUS', numeric: '480', name: 'Mauritius', lat: -20.3484, lng: 57.5522, r: 0.35 },
+  { code3: 'CPV', numeric: '132', name: 'Cabo Verde', lat: 16.0021, lng: -24.0132, r: 0.35 },
+  { code3: 'BRB', numeric: '052', name: 'Barbados', lat: 13.1939, lng: -59.5432, r: 0.25 },
+  { code3: 'LCA', numeric: '662', name: 'Saint Lucia', lat: 13.9094, lng: -60.9789, r: 0.25 },
+  { code3: 'GRD', numeric: '308', name: 'Grenada', lat: 12.1165, lng: -61.6790, r: 0.25 },
+  { code3: 'VCT', numeric: '670', name: 'Saint Vincent and the Grenadines', lat: 12.9843, lng: -61.2872, r: 0.25 },
+  { code3: 'KNA', numeric: '659', name: 'Saint Kitts and Nevis', lat: 17.3578, lng: -62.7830, r: 0.25 },
+  { code3: 'ATG', numeric: '028', name: 'Antigua and Barbuda', lat: 17.0608, lng: -61.7964, r: 0.25 },
+  { code3: 'WSM', numeric: '882', name: 'Samoa', lat: -13.7590, lng: -172.1046, r: 0.35 },
+  { code3: 'TON', numeric: '776', name: 'Tonga', lat: -21.1789, lng: -175.1982, r: 0.35 },
+  { code3: 'TUV', numeric: '798', name: 'Tuvalu', lat: -7.1095, lng: 177.6493, r: 0.35 },
+  { code3: 'NRU', numeric: '520', name: 'Nauru', lat: -0.5228, lng: 166.9315, r: 0.35 },
+  { code3: 'PLW', numeric: '585', name: 'Palau', lat: 7.5150, lng: 134.5825, r: 0.35 },
+  { code3: 'MHL', numeric: '584', name: 'Marshall Islands', lat: 7.1315, lng: 171.1844, r: 0.35 },
+  { code3: 'FSM', numeric: '583', name: 'Micronesia', lat: 7.4256, lng: 150.5508, r: 0.35 },
+  { code3: 'MAC', numeric: '446', name: 'Macao', lat: 22.1987, lng: 113.5439, r: 0.25 },
+  { code3: 'HKG', numeric: '344', name: 'Hong Kong', lat: 22.3193, lng: 114.1694, r: 0.30 }
+];
+
+const createCirclePolygon = (lng: number, lat: number, radius: number): any => {
+  const points = 16;
+  const coordinates: [number, number][] = [];
+  for (let i = 0; i <= points; i++) {
+    const angle = (i * 2 * Math.PI) / points;
+    const dx = radius * Math.cos(angle);
+    const dy = radius * Math.sin(angle);
+    const latRad = (lat * Math.PI) / 180;
+    const adjustX = dx / Math.max(0.1, Math.cos(latRad));
+    coordinates.push([lng + adjustX, lat + dy]);
+  }
+  return {
+    type: 'Polygon',
+    coordinates: [coordinates]
+  };
+};
+
 export default function WorldMap({ tracks, onSelectCountry, selectedCountryCode }: WorldMapProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -87,7 +135,7 @@ export default function WorldMap({ tracks, onSelectCountry, selectedCountryCode 
         });
 
         // Mix custom overrides or standard mappings
-        const mapped: MapCountry[] = geoJSON.features.map((feature: any) => {
+        const baseMapped: MapCountry[] = geoJSON.features.map((feature: any) => {
           const numId = String(feature.id).padStart(3, '0');
           const lookup = isoIndex.get(numId);
 
@@ -122,7 +170,31 @@ export default function WorldMap({ tracks, onSelectCountry, selectedCountryCode 
           };
         }).filter((c: MapCountry) => c.code3 !== ''); // Filter out unmapped boundaries
 
-        setCountries(mapped);
+        // Create entries for microstates that are NOT already in the standard atlas
+        const existingCodes = new Set(baseMapped.map(c => c.code3));
+        const microstateEntries: MapCountry[] = MICROSTATES.map(m => ({
+          id: m.numeric,
+          name: m.name,
+          code3: m.code3,
+          feature: {
+            type: 'Feature',
+            id: m.numeric,
+            properties: { name: m.name },
+            geometry: {
+              type: 'Point',
+              coordinates: [m.lng, m.lat]
+            }
+          }
+        }));
+
+        const finalMapped = [...baseMapped];
+        microstateEntries.forEach(m => {
+          if (!existingCodes.has(m.code3)) {
+            finalMapped.push(m);
+          }
+        });
+
+        setCountries(finalMapped);
         setLoading(false);
       } catch (err: any) {
         console.error(err);
@@ -158,15 +230,18 @@ export default function WorldMap({ tracks, onSelectCountry, selectedCountryCode 
 
     const g = svg.select('.map-content');
 
-    // Create Natural Earth projection (highly elegant, standard world representation)
+    const microstateCodes = new Set(MICROSTATES.map(m => m.code3));
+    const pathCountries = countries.filter(c => c.feature && c.feature.geometry && !microstateCodes.has(c.code3));
+
+    // Create Natural Earth projection centered on standard countries
     const projection = d3.geoNaturalEarth1()
-      .fitSize([dimensions.width, dimensions.height], { type: 'FeatureCollection', features: countries.map(c => c.feature) });
+      .fitSize([dimensions.width, dimensions.height], { type: 'FeatureCollection', features: pathCountries.map(c => c.feature) });
 
     const pathGenerator = d3.geoPath().projection(projection);
 
     // Render country path elements
     const countryPaths = g.selectAll('.country-path')
-      .data(countries, (d: any) => d.code3)
+      .data(pathCountries, (d: any) => d.code3)
       .join('path')
       .attr('class', 'country-path transition-all cursor-pointer stroke-white outline-none')
       .attr('d', (d: any) => pathGenerator(d.feature))
@@ -192,7 +267,41 @@ export default function WorldMap({ tracks, onSelectCountry, selectedCountryCode 
         return selectedCountryCode === d.code3 ? 1.5 : 0.5;
       });
 
-    // Interaction Events
+    // Render microstate circles
+    const microstateCircles = g.selectAll('.microstate-circle')
+      .data(MICROSTATES, (d: any) => d.code3)
+      .join('circle')
+      .attr('class', 'microstate-circle transition-all cursor-pointer stroke-white')
+      .attr('cx', (d: any) => {
+        const coords = projection([d.lng, d.lat]);
+        return coords ? coords[0] : 0;
+      })
+      .attr('cy', (d: any) => {
+        const coords = projection([d.lng, d.lat]);
+        return coords ? coords[1] : 0;
+      })
+      .attr('r', 4.5)
+      .attr('stroke-width', (d: any) => {
+        return selectedCountryCode === d.code3 ? 1.5 : 0.75;
+      })
+      .attr('stroke', (d: any) => {
+        return selectedCountryCode === d.code3 ? '#0F172A' : '#FFFFFF';
+      })
+      .attr('fill', (d: any) => {
+        const track = trackMap.get(d.code3);
+        if (track) {
+          switch (track.category) {
+            case 'lived': return '#10B981';
+            case 'visited': return '#6366F1';
+            case 'planned': return '#F59E0B';
+            case 'want to visit': return '#F43F5E';
+            case 'favorite': return '#DC2626';
+          }
+        }
+        return selectedCountryCode === d.code3 ? '#475569' : '#CBD5E1';
+      });
+
+    // Interaction Events for Paths
     countryPaths
       .on('mouseover', function (event, d: any) {
         d3.select(this)
@@ -212,6 +321,38 @@ export default function WorldMap({ tracks, onSelectCountry, selectedCountryCode 
           .attr('opacity', 1)
           .attr('stroke', isSelected ? '#0F172A' : '#FFFFFF')
           .attr('stroke-width', isSelected ? 1.5 : 0.5);
+        
+        setHoveredCountry(null);
+      })
+      .on('click', function (event, d: any) {
+        onSelectCountry(d.code3, d.name);
+      });
+
+    // Interaction Events for Microstate Circles
+    microstateCircles
+      .on('mouseover', function (event, d: any) {
+        d3.select(this)
+          .attr('r', 6.5)
+          .attr('stroke', '#0F172A')
+          .attr('stroke-width', 1.5);
+        
+        setHoveredCountry({
+          id: d.numeric,
+          name: d.name,
+          code3: d.code3,
+          feature: null
+        });
+        setTooltipPos({ x: event.clientX, y: event.clientY });
+      })
+      .on('mousemove', function (event) {
+        setTooltipPos({ x: event.clientX, y: event.clientY });
+      })
+      .on('mouseout', function (event, d: any) {
+        const isSelected = selectedCountryCode === d.code3;
+        d3.select(this)
+          .attr('r', 4.5)
+          .attr('stroke', isSelected ? '#0F172A' : '#FFFFFF')
+          .attr('stroke-width', isSelected ? 1.5 : 0.75);
         
         setHoveredCountry(null);
       })
