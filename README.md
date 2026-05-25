@@ -40,6 +40,37 @@ A beautiful, interactive, fully client-side and **100% offline-ready** world tra
 
 ---
 
+## 🌐 Free Hosting Options
+
+Because this app is a fully client-side Single Page Application (SPA), you can host it for free on many popular cloud platforms. Here are the best websites to host this application completely for free:
+
+### 1. **Cloudflare Pages** (Highly Recommended)
+- **Why**: Fastest CDN edge network, unmetered bandwidth, and extremely simple integration with Git repositories.
+- **How to Host**: 
+  1. Connect your GitHub repository to [Cloudflare Dashboard](https://dash.cloudflare.com).
+  2. Choose **Vite** or specify build command: `npm run build` and output directory: `dist`.
+  3. Deploy!
+
+### 2. **Vercel**
+- **Why**: Excellent developer experience, automatic preview deployments on pull requests, and instant staging builds.
+- **How to Host**:
+  1. Install Vercel CLI (`npm install -g vercel`) and run `vercel`, or import your repository directly on [vercel.com](https://vercel.com).
+  2. Frame settings detect Vite automatically. Out-of-the-box configurations will run successfully.
+
+### 3. **Netlify**
+- **Why**: Intuitive drag-and-drop deployment or Git integration. Provides free custom domain configuration and free SSL certificates instantly.
+- **How to Host**:
+  1. Import through GitHub or zip the built `./dist/` folder and drag/drop it on the [Netlify App Dashboard](https://app.netlify.com).
+  2. Build configuration defaults: build command: `npm run build`, publish directory: `dist`.
+
+### 4. **GitHub Pages**
+- **Why**: Completely integrated with your source code. Free hosting directly on github.io.
+- **How to Host**:
+  - Set up a GitHub Action to deploy static files on push to your main branch, or use a tool like `gh-pages` npm package.
+  - *Note*: Ensure your `vite.config.ts` has the correct `base` path (e.g. `base: '/repo-name/'`) if deploying to a subdirectory rather than a custom root domain.
+
+---
+
 ## 🔒 Privacy & Data Portability
 
 - This app strictly operates **on-device only**.

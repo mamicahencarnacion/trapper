@@ -1,0 +1,24 @@
+{
+  "short_name": "Travel Map",
+  "name": "World Travel Planner & Map Tracker",
+  "description": "Interactive world travel mapping and offline-ready itinerary planner.",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "maskable"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#0d1527",
+  "theme_color": "#0d1527",
+  "display": "standalone",
+  "orientation": "any"
+}
