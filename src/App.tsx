@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, Palmtree, MapPin, Share2, Sparkles, Filter, ChevronRight, HelpCircle, AlertTriangle, Calendar } from 'lucide-react';
+import { Compass, Palmtree, MapPin, Share2, Sparkles, Filter, ChevronRight, HelpCircle, AlertTriangle, Calendar, Download, Upload, Check } from 'lucide-react';
 import WorldMap from './components/WorldMap';
 import StatsSection from './components/StatsSection';
 import Dashboard from './components/Dashboard';
@@ -42,6 +42,18 @@ export default function App() {
   const [currency, setCurrency] = useState<'USD' | 'GBP' | 'PHP'>('PHP');
   const [activeTab, setActiveTab] = useState<'map' | 'timeline'>('map');
   const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
+  const [showClearConfirmSync, setShowClearConfirmSync] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // SyncStatus auto-dismiss timer
+  useEffect(() => {
+    if (syncStatus) {
+      const timer = setTimeout(() => {
+        setSyncStatus(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [syncStatus]);
 
   // Initialize tracks and currency from localStorage or default presets
   useEffect(() => {
@@ -126,6 +138,57 @@ export default function App() {
     }
   };
 
+  // Export all tracks to a JSON file
+  const handleExportData = () => {
+    try {
+      const dataStr = JSON.stringify(tracks, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `travel_tracker_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setSyncStatus({ text: 'Data backup file downloaded successfully!', type: 'success' });
+    } catch (error: any) {
+      setSyncStatus({ text: `Export failed: ${error?.message || error}`, type: 'error' });
+    }
+  };
+
+  // Import tracks from JSON file
+  const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileReader = new FileReader();
+    fileReader.onload = (e) => {
+      try {
+        const result = e.target?.result;
+        if (typeof result !== 'string') return;
+        
+        const parsed = JSON.parse(result);
+        
+        if (!Array.isArray(parsed)) {
+          setSyncStatus({ text: 'Import failed: Data must be an array of pins.', type: 'error' });
+          return;
+        }
+
+        const migrated = migrateCountryTracks(parsed);
+        saveTracks(migrated);
+        setSyncStatus({ text: `Imported ${migrated.length} travel items successfully!`, type: 'success' });
+      } catch (err) {
+        setSyncStatus({ text: 'Import failed: Stale or corrupted backup file.', type: 'error' });
+      }
+    };
+    fileReader.onerror = () => {
+      setSyncStatus({ text: 'Could not read chosen file.', type: 'error' });
+    };
+    fileReader.readAsText(files[0]);
+    event.target.value = '';
+  };
+
   // Open modal/drawer for editing
   const handleOpenEditCountry = (code: string) => {
     const found = tracks.find(t => t.countryCode === code);
@@ -143,9 +206,28 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50/50 text-slate-800 font-sans selection:bg-slate-900 selection:text-white pb-16">
       
+      {/* Dynamic Sync/Export status Toast Toast Notification */}
+      {syncStatus && (
+        <div 
+          id="sync-toast-feedback"
+          className={`fixed top-4 right-4 sm:top-20 sm:right-6 sm:max-w-md z-[9999] p-3.5 pr-6 rounded-2xl border text-xs font-bold shadow-lg flex items-center gap-3 transition-all duration-300 animate-fadeIn ${
+            syncStatus.type === 'success' 
+              ? 'bg-emerald-50 border-emerald-250 text-emerald-800 shadow-emerald-950/5' 
+              : 'bg-red-50 border-red-250 text-red-800 shadow-red-950/5'
+          }`}
+        >
+          {syncStatus.type === 'success' ? (
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-red-650 shrink-0" />
+          )}
+          <span>{syncStatus.text}</span>
+        </div>
+      )}
+
       {/* Prime Decorative Sticky Navigation Banner */}
       <header className="bg-white border-b border-slate-100 sticky top-0 z-30 shadow-xs/10 backdrop-blur-md bg-white/90">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-slate-950 flex items-center justify-center shadow-md shadow-slate-900/10">
               <Compass className="w-5.5 h-5.5 text-white animate-spin-slow" />
@@ -163,11 +245,11 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500 hidden sm:inline-block">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 hidden lg:inline-block">
               {tracks.length} Pinned Countries
             </span>
-            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            <div className="h-4 w-px bg-slate-200 hidden lg:block" />
             
             {/* Currency Selector setting */}
             <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1 text-xs font-semibold">
@@ -183,9 +265,37 @@ export default function App() {
               </select>
             </div>
 
+            {/* Sync & Backup Custom Buttons */}
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1 text-xs">
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider pl-1.5 pr-0.5 hidden xs:inline-block">Sync:</span>
+              <button
+                type="button"
+                onClick={handleExportData}
+                className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-white hover:bg-slate-50 text-slate-700 border border-slate-150 py-1.5 px-2.5 rounded-lg transition-all cursor-pointer whitespace-nowrap active:scale-97"
+                title="Export custom configurations and travel data as JSON backup"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-505" />
+                <span>Export</span>
+              </button>
+              
+              <label 
+                className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-white hover:bg-slate-50 text-slate-700 border border-slate-150 py-1.5 px-2.5 rounded-lg transition-all cursor-pointer whitespace-nowrap active:scale-97"
+                title="Import travel data backup JSON file"
+              >
+                <Upload className="w-3.5 h-3.5 text-emerald-605" />
+                <span>Import</span>
+                <input 
+                  type="file" 
+                  accept=".json" 
+                  onChange={handleImportData} 
+                  className="hidden" 
+                />
+              </label>
+            </div>
+
             {tracks.length > 0 && (
               <>
-                <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+                <div className="h-4 w-px bg-slate-200 hidden md:block" />
                 {showClearConfirm ? (
                   <div className="flex items-center gap-2 bg-red-50 border border-red-150 rounded-xl p-1 px-2.5">
                     <span className="text-[9px] font-bold text-red-750 uppercase tracking-widest pl-1">Confirm Reset All?</span>
