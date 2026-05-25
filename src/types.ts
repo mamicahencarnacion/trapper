@@ -17,21 +17,32 @@ export interface DayItinerary {
   entries: ItineraryEntry[];
 }
 
-export interface CountryTrack {
-  id: string; // ISO numeric or A3 country code
-  countryCode: string; // ISO A3 country code
-  countryName: string;
+export interface TravelLog {
+  id: string; // Unique ID for this log entry
   category: CountryCategory;
-  
-  // Visited / Lived details
-  startDate?: string; // Stay start date
-  endDate?: string; // Stay end date
-  cities?: string[]; // Optional list of cities visited
-  
-  // Planned details
+  startDate?: string;
+  endDate?: string;
+  cities?: string[];
   plannedStartDate?: string;
   plannedEndDate?: string;
-  itinerary?: DayItinerary[]; // Day-by-day itinerary
+  itinerary?: DayItinerary[];
+  notes?: string; // Specific notes or wishlist text for this log
+}
+
+export interface CountryTrack {
+  id: string; // ISO numeric or A3 country code
+  countryCode: string;
+  countryName: string;
+  category: CountryCategory; // Primary category representing the highest-state milestone
+  logs?: TravelLog[]; // Support for multiple journeys/logs
+  
+  // Legacy support fallback properties
+  startDate?: string;
+  endDate?: string;
+  cities?: string[];
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  itinerary?: DayItinerary[];
 }
 
 // Stats interface for dashboard summary

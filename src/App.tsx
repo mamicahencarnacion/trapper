@@ -113,23 +113,55 @@ const DEFAULT_PRESETS: CountryTrack[] = [
   }
 ];
 
+// Migrate layout properties for multiple logs support
+const migrateCountryTracks = (raw: CountryTrack[]): CountryTrack[] => {
+  return raw.map(t => {
+    if (t.logs && t.logs.length > 0) {
+      return t;
+    }
+    // Otherwise migrate old root fields into a legacy log
+    const legacyLog = {
+      id: `legacy-${t.countryCode}-${Date.now()}`,
+      category: t.category,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      cities: t.cities,
+      plannedStartDate: t.plannedStartDate,
+      plannedEndDate: t.plannedEndDate,
+      itinerary: t.itinerary,
+      notes: ''
+    };
+    return {
+      ...t,
+      logs: [legacyLog]
+    };
+  });
+};
+
 export default function App() {
   const [tracks, setTracks] = useState<CountryTrack[]>([]);
   const [selectedCountry, setSelectedCountry] = useState<{ code: string; name: string } | null>(null);
   const [showDataWarning, setShowDataWarning] = useState<boolean>(false);
+  const [currency, setCurrency] = useState<'USD' | 'GBP' | 'PHP'>('USD');
 
-  // Initialize tracks from localStorage or default presets
+  // Initialize tracks and currency from localStorage or default presets
   useEffect(() => {
+    const cachedCurrency = localStorage.getItem('world_travel_currency');
+    if (cachedCurrency === 'USD' || cachedCurrency === 'GBP' || cachedCurrency === 'PHP') {
+      setCurrency(cachedCurrency);
+    }
+
     const cached = localStorage.getItem('world_travel_tracks');
     if (cached) {
       try {
-        setTracks(JSON.parse(cached));
+        const parsed = JSON.parse(cached);
+        setTracks(migrateCountryTracks(parsed));
       } catch (e) {
         console.error('Failed parsing cached tracks:', e);
-        setTracks(DEFAULT_PRESETS);
+        setTracks(migrateCountryTracks(DEFAULT_PRESETS));
       }
     } else {
-      setTracks(DEFAULT_PRESETS);
+      setTracks(migrateCountryTracks(DEFAULT_PRESETS));
     }
 
     const todayDate = new Date().toDateString();
@@ -143,6 +175,11 @@ export default function App() {
   const saveTracks = (updatedTracks: CountryTrack[]) => {
     setTracks(updatedTracks);
     localStorage.setItem('world_travel_tracks', JSON.stringify(updatedTracks));
+  };
+
+  const handleCurrencyChange = (newCurrency: 'USD' | 'GBP' | 'PHP') => {
+    setCurrency(newCurrency);
+    localStorage.setItem('world_travel_currency', newCurrency);
   };
 
   const handleDismissPromptToday = () => {
@@ -184,6 +221,7 @@ export default function App() {
     ? tracks.find(t => t.countryCode === selectedCountry.code) || null 
     : null;
 
+
   return (
     <div className="min-h-screen bg-slate-50/50 text-slate-800 font-sans selection:bg-slate-900 selection:text-white pb-16">
       
@@ -212,11 +250,27 @@ export default function App() {
               {tracks.length} Pinned Countries
             </span>
             <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            
+            {/* Currency Selector setting */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1 text-xs font-semibold">
+              <span className="text-[10px] text-slate-400 uppercase tracking-widest pl-1">Currency:</span>
+              <select
+                value={currency}
+                onChange={(e) => handleCurrencyChange(e.target.value as any)}
+                className="bg-white border border-slate-150 rounded-lg text-[11px] font-bold text-slate-800 px-2 py-1 outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer"
+              >
+                <option value="USD">USD ($)</option>
+                <option value="GBP">GBP (£)</option>
+                <option value="PHP">PHP (₱)</option>
+              </select>
+            </div>
+
+            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
             <button
               onClick={() => {
                 // Clear state helper to reset presets
                 if (window.confirm('Would you like to reset maps back to default showcase data? This will overwrite your changes.')) {
-                  saveTracks(DEFAULT_PRESETS);
+                  saveTracks(migrateCountryTracks(DEFAULT_PRESETS));
                 }
               }}
               className="text-[10px] uppercase font-bold tracking-wider px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 transition-all text-slate-700 cursor-pointer"
@@ -272,7 +326,7 @@ export default function App() {
 
         {/* Row 2: Comprehensive visual numeric stats counters */}
         <section id="travel-footprint-statistics">
-          <StatsSection tracks={tracks} />
+          <StatsSection tracks={tracks} currency={currency} />
         </section>
 
         {/* Row 3: Dashboard feeds and lists of pinned countries */}
@@ -281,6 +335,7 @@ export default function App() {
             tracks={tracks}
             onEditCountry={handleOpenEditCountry}
             onDeleteCountry={handleDeleteCountryTrack}
+            currency={currency}
           />
         </section>
 
@@ -295,6 +350,7 @@ export default function App() {
           onSave={handleSaveCountryTrack}
           onDelete={handleDeleteCountryTrack}
           onClose={() => setSelectedCountry(null)}
+          currency={currency}
         />
       )}
 

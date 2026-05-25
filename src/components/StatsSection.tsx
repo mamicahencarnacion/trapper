@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
 import { Globe, PlaneTakeoff, Award, MapPin, DollarSign, Calendar, Heart, ShieldAlert } from 'lucide-react';
 import { CountryTrack, TravelStats } from '../types';
+import { formatCurrency, CurrencyType } from '../lib/currency';
 
 interface StatsSectionProps {
   tracks: CountryTrack[];
+  currency?: CurrencyType;
 }
 
-export default function StatsSection({ tracks }: StatsSectionProps) {
+export default function StatsSection({ tracks, currency = 'USD' }: StatsSectionProps) {
   const stats = useMemo<TravelStats>(() => {
     let visited = 0;
     let lived = 0;
@@ -17,35 +19,41 @@ export default function StatsSection({ tracks }: StatsSectionProps) {
     let plannedBudget = 0;
 
     tracks.forEach((t) => {
-      switch (t.category) {
-        case 'visited':
-          visited++;
-          break;
-        case 'lived':
-          lived++;
-          break;
-        case 'want to visit':
-          want++;
-          break;
-        case 'planned':
-          planned++;
-          break;
-        case 'favorite':
-          favorite++;
-          break;
-      }
-      if (t.cities) {
-        totalCities += t.cities.length;
-      }
-      if (t.category === 'planned' && t.itinerary) {
-        t.itinerary.forEach((day) => {
-          day.entries.forEach((ent) => {
-            if (ent.price) {
-              plannedBudget += ent.price;
-            }
+      const logs = t.logs || [];
+      
+      const hasLived = logs.some(l => l.category === 'lived');
+      const hasVisited = logs.some(l => l.category === 'visited');
+      const hasPlanned = logs.some(l => l.category === 'planned');
+      const hasWant = logs.some(l => l.category === 'want to visit');
+      const hasFavorite = logs.some(l => l.category === 'favorite');
+
+      if (hasLived) lived++;
+      if (hasVisited) visited++;
+      if (hasPlanned) planned++;
+      if (hasWant) want++;
+      if (hasFavorite) favorite++;
+
+      // Count distinct cities for this country across all its logs
+      const uniqueCities = new Set<string>();
+      logs.forEach(l => {
+        if (l.cities) {
+          l.cities.forEach(c => uniqueCities.add(c.trim().toLowerCase()));
+        }
+      });
+      totalCities += uniqueCities.size;
+
+      // Plan budgets
+      logs.forEach(l => {
+        if (l.category === 'planned' && l.itinerary) {
+          l.itinerary.forEach((day) => {
+            day.entries.forEach((ent) => {
+              if (ent.price) {
+                plannedBudget += ent.price;
+              }
+            });
           });
-        });
-      }
+        }
+      });
     });
 
     return {
@@ -62,21 +70,41 @@ export default function StatsSection({ tracks }: StatsSectionProps) {
 
   // There are roughly 195 sovereign countries in the world.
   const worldVisitedPercent = useMemo(() => {
-    const uniqueVisitedOrLived = tracks.filter(
-      (t) => t.category === 'visited' || t.category === 'lived' || t.category === 'favorite'
-    ).length;
+    const uniqueVisitedOrLived = tracks.filter((t) => {
+      const logs = t.logs || [];
+      return logs.some(l => l.category === 'visited' || l.category === 'lived' || l.category === 'favorite');
+    }).length;
     return Math.round((uniqueVisitedOrLived / 195) * 100);
   }, [tracks]);
 
-  // Find the next upcoming trip countdown
+  const totalUniqueExplored = useMemo(() => {
+    return tracks.filter((t) => {
+      const logs = t.logs || [];
+      return logs.some(l => l.category === 'visited' || l.category === 'lived' || l.category === 'favorite');
+    }).length;
+  }, [tracks]);
+
+  // Find the next upcoming trip countdown across all multiple logs
   const nextTrip = useMemo(() => {
-    const plannedTrips = tracks.filter((t) => t.category === 'planned' && t.plannedStartDate);
+    const plannedTrips: Array<{ countryName: string; countryCode: string; plannedStartDate: string }> = [];
+    tracks.forEach(t => {
+      (t.logs || []).forEach(l => {
+        if (l.category === 'planned' && l.plannedStartDate) {
+          plannedTrips.push({
+            countryName: t.countryName,
+            countryCode: t.countryCode,
+            plannedStartDate: l.plannedStartDate
+          });
+        }
+      });
+    });
+
     if (plannedTrips.length === 0) return null;
 
     // Filter and sort by plannedStartDate
     const futureTrips = plannedTrips
-      .map((t) => {
-        const tripDate = new Date(t.plannedStartDate!);
+      .map((pt) => {
+        const tripDate = new Date(pt.plannedStartDate);
         const today = new Date();
         // Zero out times
         today.setHours(0, 0, 0, 0);
@@ -84,13 +112,13 @@ export default function StatsSection({ tracks }: StatsSectionProps) {
         const diffTime = tripDate.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         return {
-          countryName: t.countryName,
-          countryCode: t.countryCode,
-          startDate: t.plannedStartDate,
+          countryName: pt.countryName,
+          countryCode: pt.countryCode,
+          startDate: pt.plannedStartDate,
           daysRemaining: diffDays,
         };
       })
-      .filter((t) => t.daysRemaining >= 0)
+      .filter((pt) => pt.daysRemaining >= 0)
       .sort((a, b) => a.daysRemaining - b.daysRemaining);
 
     return futureTrips[0] || null;
@@ -104,7 +132,7 @@ export default function StatsSection({ tracks }: StatsSectionProps) {
           <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">World Footprint</span>
           <h3 className="text-2xl font-bold text-slate-900 mt-1">{worldVisitedPercent}% Visited</h3>
           <p className="text-xs text-slate-500 mt-1 max-w-sm leading-relaxed">
-            You have footprint in <span className="font-semibold text-slate-800">{tracks.filter(t => t.category==='visited' || t.category==='lived' || t.category==='favorite').length} countries</span>. Keep exploring to fill your global coordinate history!
+            You have footprint in <span className="font-semibold text-slate-800">{totalUniqueExplored} countries</span>. Keep exploring to fill your global coordinate history!
           </p>
           <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden relative border border-slate-100/50">
             <div
@@ -148,12 +176,13 @@ export default function StatsSection({ tracks }: StatsSectionProps) {
         </div>
       </div>
 
+
       {/* Budget Card */}
       <div id="stat-card-budget" className="bg-white border border-slate-100 rounded-3xl p-5 md:p-6 shadow-sm flex items-center justify-between gap-4">
         <div className="flex-1">
           <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Itinerary Budgets</span>
           <h3 className="text-xl font-bold text-slate-900 mt-1">
-            ${stats.totalPlannedBudget.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            {formatCurrency(stats.totalPlannedBudget, currency)}
           </h3>
           <p className="text-xs text-slate-500 mt-1">
             Accumulated price across planned itineraries.
